@@ -28,6 +28,7 @@ import {
   Tag,
   UserPlus,
   Workflow,
+  Bot,
 } from "lucide-react";
 
 // ============================================================
@@ -48,6 +49,7 @@ export type NodeType =
   | "condition"
   | "set_tag"
   | "handoff"
+  | "ai_agent"
   | "end";
 
 export interface BuilderNode {
@@ -109,6 +111,11 @@ export const NODE_META: Record<
     label: "Handoff to agent",
     icon: UserPlus,
     color: "text-amber-400",
+  },
+  ai_agent: {
+    label: "AI Agent",
+    icon: Bot,
+    color: "text-purple-500",
   },
   end: { label: "End", icon: Flag, color: "text-muted-foreground" },
 };

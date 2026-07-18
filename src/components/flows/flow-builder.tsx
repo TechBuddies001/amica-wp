@@ -568,6 +568,7 @@ function AddNodeButton({ onAdd }: { onAdd: (type: NodeType) => void }) {
     "condition",
     "set_tag",
     "handoff",
+    "ai_agent",
     "end",
   ];
   return (

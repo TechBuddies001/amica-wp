@@ -329,13 +329,20 @@ async function handleStatusUpdate(status: {
   status: string
   timestamp: string
   recipient_id: string
+  errors?: Array<{ code: number; title: string; message: string; error_data?: { details: string } }>
 }) {
-  // 1) Mirror onto messages (legacy behavior) — Meta's status values
-  //    already match the CHECK constraint on messages.status.
+  let updateObj: any = { status: status.status }
+  if (status.status === 'failed' && status.errors && status.errors.length > 0) {
+    const err = status.errors[0];
+    const errMsg = `[Meta Error ${err.code}] ${err.title || ''}: ${err.message || ''} ${err.error_data?.details || ''}`;
+    updateObj.content_text = errMsg;
+  }
+
   const { error: msgErr } = await supabaseAdmin()
     .from('messages')
-    .update({ status: status.status })
+    .update(updateObj)
     .eq('message_id', status.id)
+
 
   if (msgErr) {
     console.error('Error updating message status:', msgErr)

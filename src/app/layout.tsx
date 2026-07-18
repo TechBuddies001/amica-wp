@@ -19,11 +19,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: {
-    default: "wacrm",
-    template: "%s — wacrm",
-  },
-  description: "Self-hostable CRM template for WhatsApp.",
+  title: "AMICA",
+  description: "AMICA Solution Pvt. Ltd.",
   robots: {
     index: false,
     follow: false,

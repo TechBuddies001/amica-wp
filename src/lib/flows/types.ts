@@ -48,12 +48,14 @@ export interface SendButtonsNodeConfig {
     /** node_key the runner advances to when this button is tapped. */
     next_node_key: string;
   }>;
+  var_key?: string;
 }
 
 export interface SendListNodeConfig {
   text: string;
   /** Label of the tap-to-expand button on the message bubble. */
   button_label: string;
+  var_key?: string;
   header_text?: string;
   footer_text?: string;
   /** 1-10 rows TOTAL across sections; cap enforced in meta-api. */
@@ -194,6 +196,7 @@ export type FlowNodeConfig =
   | { node_type: "condition"; config: ConditionNodeConfig }
   | { node_type: "set_tag"; config: SetTagNodeConfig }
   | { node_type: "handoff"; config: HandoffNodeConfig }
+  | { node_type: "ai_agent"; config: Record<string, unknown> }
   | { node_type: "end"; config: EndNodeConfig };
 
 export type FlowNodeType = FlowNodeConfig["node_type"];
@@ -234,7 +237,7 @@ export interface FlowRow {
   name: string;
   description: string | null;
   status: "draft" | "active" | "archived";
-  trigger_type: "keyword" | "first_inbound_message" | "manual";
+  trigger_type: "keyword" | "first_inbound_message" | "manual" | "new_message_received";
   trigger_config: KeywordTriggerConfig | FirstInboundTriggerConfig | Record<string, unknown>;
   entry_node_id: string | null;
   fallback_policy: FlowFallbackPolicy;

@@ -46,7 +46,7 @@ interface FlowRow {
   name: string;
   description: string | null;
   status: "draft" | "active" | "archived";
-  trigger_type: "keyword" | "first_inbound_message" | "manual";
+  trigger_type: "keyword" | "first_inbound_message" | "manual" | "new_message_received";
   trigger_config: { keywords?: string[] } | Record<string, unknown>;
   execution_count: number;
   last_executed_at: string | null;

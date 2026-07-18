@@ -125,7 +125,8 @@ export function isSuspending(node_type: string): boolean {
   return (
     node_type === "send_buttons" ||
     node_type === "send_list" ||
-    node_type === "collect_input"
+    node_type === "collect_input" ||
+    node_type === "ai_agent"
   );
 }
 
@@ -157,10 +158,10 @@ export function evaluateConditionPredicate(args: {
       return args.subjectValue === undefined || args.subjectValue === "";
     case "equals":
       if (args.subjectValue === undefined) return false;
-      return args.subjectValue === (args.configValue ?? "");
+      return args.subjectValue.toLowerCase() === (args.configValue ?? "").toLowerCase();
     case "contains":
       if (args.subjectValue === undefined) return false;
-      return args.subjectValue.includes(args.configValue ?? "");
+      return args.subjectValue.toLowerCase().includes((args.configValue ?? "").toLowerCase());
   }
 }
 
@@ -340,6 +341,9 @@ async function findEntryFlow(
       }
     } else if (flow.trigger_type === "first_inbound_message" && isFirstInbound) {
       return flow;
+    } else if (flow.trigger_type === "new_message_received") {
+      // Triggers on every inbound text message — effectively a catch-all.
+      return flow;
     }
     // 'manual' triggers do not auto-start from inbound messages.
   }
@@ -363,9 +367,9 @@ async function sendButtonsAndSuspend(
     userId: run.user_id,
     conversationId: run.conversation_id!,
     contactId: run.contact_id!,
-    bodyText: cfg.text,
-    headerText: cfg.header_text,
-    footerText: cfg.footer_text,
+    bodyText: cfg.text ? interpolateVars(cfg.text, run.vars) : "",
+    headerText: cfg.header_text ? interpolateVars(cfg.header_text, run.vars) : undefined,
+    footerText: cfg.footer_text ? interpolateVars(cfg.footer_text, run.vars) : undefined,
     buttons: cfg.buttons.map((b) => ({ id: b.reply_id, title: b.title })),
   });
   await logEvent(db, run.id, "message_sent", node.node_key, {
@@ -399,10 +403,10 @@ async function sendListAndSuspend(
     userId: run.user_id,
     conversationId: run.conversation_id!,
     contactId: run.contact_id!,
-    bodyText: cfg.text,
+    bodyText: cfg.text ? interpolateVars(cfg.text, run.vars) : "",
     buttonLabel: cfg.button_label,
-    headerText: cfg.header_text,
-    footerText: cfg.footer_text,
+    headerText: cfg.header_text ? interpolateVars(cfg.header_text, run.vars) : undefined,
+    footerText: cfg.footer_text ? interpolateVars(cfg.footer_text, run.vars) : undefined,
     sections: cfg.sections.map((s) => ({
       title: s.title,
       rows: s.rows.map((r) => ({
@@ -681,6 +685,20 @@ async function advanceFromNodeKey(
       }
       return { outcome: "advanced" };
     }
+    if (node.node_type === "ai_agent") {
+      const advanced = await advanceCurrentNodeKey(
+        db,
+        run.id,
+        run.current_node_key,
+        node.node_key,
+      );
+      if (!advanced) {
+        await logEvent(db, run.id, "error", node.node_key, {
+          reason: "lost_race_during_advance",
+        });
+      }
+      return { outcome: "advanced" };
+    }
     if (node.node_type === "condition") {
       const cfg = node.config as unknown as ConditionNodeConfig;
       let branch: "true" | "false";
@@ -930,6 +948,21 @@ async function handleReplyForActiveRun(
       currentNode.node_type === "send_list")
   ) {
     matched = matchReplyId(currentNode, message.reply_id);
+    const cfg = currentNode.config as any;
+    if (matched && cfg.var_key) {
+      let buttonTitle = message.reply_id;
+      if (currentNode.node_type === "send_buttons") {
+        const btn = cfg.buttons?.find((b: any) => b.reply_id === message.reply_id);
+        if (btn) buttonTitle = btn.title;
+      } else if (currentNode.node_type === "send_list") {
+        for (const section of cfg.sections || []) {
+           const row = section.rows?.find((r: any) => r.id === message.reply_id);
+           if (row) { buttonTitle = row.title; break; }
+        }
+      }
+      run.vars = { ...run.vars, [cfg.var_key]: buttonTitle };
+      await db.from("flow_runs").update({ vars: run.vars }).eq("id", run.id);
+    }
   } else if (
     message.kind === "text" &&
     currentNode.node_type === "collect_input"
@@ -957,6 +990,44 @@ async function handleReplyForActiveRun(
           captured_length: captured.length,
         });
         matched = cfg.next_node_key;
+      }
+    }
+  } else if (
+    message.kind === "text" &&
+    currentNode.node_type === "ai_agent"
+  ) {
+    const userMessage = message.text.trim();
+    if (userMessage.length > 0) {
+      try {
+        const { generateRAGReply } = await import("../ai/rag");
+        const reply = await generateRAGReply(run.account_id, userMessage);
+        
+        if (reply) {
+          const { whatsapp_message_id } = await engineSendText({
+            accountId: run.account_id,
+            userId: run.user_id,
+            conversationId: run.conversation_id!,
+            contactId: run.contact_id!,
+            text: reply,
+          });
+          
+          await logEvent(db, run.id, "message_sent", currentNode.node_key, {
+            node_type: "ai_agent",
+            whatsapp_message_id,
+          });
+          
+          if (run.reprompt_count !== 0) {
+            await db.from("flow_runs").update({ reprompt_count: 0 }).eq("id", run.id);
+          }
+          
+          return {
+            consumed: true,
+            flow_run_id: run.id,
+            outcome: "advanced",
+          };
+        }
+      } catch (err) {
+         console.error('AI Agent error', err);
       }
     }
   }

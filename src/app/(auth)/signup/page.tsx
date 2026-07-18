@@ -131,11 +131,11 @@ function SignupPageInner() {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <Card className="w-full max-w-md border-border bg-card">
         <CardHeader className="items-center text-center">
-          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+          <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-xl bg-white overflow-hidden shadow-sm">
             {inviteToken ? (
               <UsersRound className="h-6 w-6 text-primary" />
             ) : (
-              <MessageSquare className="h-6 w-6 text-primary" />
+              <img src="/amica-logo.png" alt="AMICA Logo" className="h-full w-full object-contain" />
             )}
           </div>
           <CardTitle className="text-xl text-foreground">
@@ -143,8 +143,8 @@ function SignupPageInner() {
           </CardTitle>
           <CardDescription className="text-muted-foreground">
             {inviteToken
-              ? "Verify your email, then accept the invitation to join your team."
-              : "Get started with CRM Template for WhatsApp"}
+              ? "Sign up to accept the invitation"
+              : "Get started with AMICA"}
           </CardDescription>
         </CardHeader>
         <CardContent>

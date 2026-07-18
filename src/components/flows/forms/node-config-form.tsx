@@ -198,6 +198,18 @@ export function NodeConfigForm({
         />
       );
 
+    case "ai_agent":
+      return (
+        <div className="rounded border border-primary/20 bg-primary/5 p-4 text-sm text-primary">
+          <p className="font-medium mb-1">AI Agent Node</p>
+          <p className="opacity-90 leading-relaxed">
+            When a customer reaches this point in the flow, the AI Agent will take over and respond to their message using your Knowledge Base context.
+            <br/><br/>
+            You can configure the Agent&apos;s behavior and API key in the AI Settings tab.
+          </p>
+        </div>
+      );
+
     case "end":
       return (
         <p className="text-xs text-muted-foreground">
