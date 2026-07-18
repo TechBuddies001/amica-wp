@@ -183,11 +183,9 @@ export default function KnowledgeBasePage() {
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="size-8 p-0 hover:bg-muted">
-                          <MoreVertical className="size-4" />
-                          <span className="sr-only">Open menu</span>
-                        </Button>
+                      <DropdownMenuTrigger className="inline-flex items-center justify-center size-8 p-0 hover:bg-muted rounded-md text-muted-foreground hover:text-foreground">
+                        <MoreVertical className="size-4" />
+                        <span className="sr-only">Open menu</span>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuItem 

@@ -258,5 +258,10 @@ export function summarizeNode(node: BuilderNode): string | null {
       const note = typeof cfg.note === "string" ? cfg.note : "";
       return note.length > 0 ? truncate(note) : null;
     }
+    case "ai_agent": {
+      return "AI Knowledge Base Agent";
+    }
+    default:
+      return null;
   }
 }
