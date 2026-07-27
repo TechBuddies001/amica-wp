@@ -41,6 +41,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type {
   MessageTemplate,
   TemplateButton,
@@ -129,6 +130,7 @@ export function TemplateManager() {
 
   const [loading, setLoading] = useState(true);
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'APPROVED' | 'PENDING' | 'REJECTED' | 'DRAFT'>('ALL');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -515,116 +517,135 @@ export function TemplateManager() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-3 xl:grid-cols-2">
-          {templates.map((template) => {
-            const statusKey = template.status || 'DRAFT';
-            const status = templateStatusConfig[statusKey];
-            return (
-              <Card key={template.id}>
-                <CardContent className="flex items-start justify-between pt-4">
-                  <div className="space-y-2 min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-medium text-foreground">{template.name}</h3>
-                      <Badge
-                        className={`text-xs border ${categoryColors[template.category] || ''}`}
-                      >
-                        {template.category}
-                      </Badge>
-                      <Badge className={`text-xs border ${status.classes}`}>
-                        {status.label}
-                      </Badge>
-                      {template.language && (
-                        <span className="text-xs text-muted-foreground uppercase">
-                          {template.language}
-                        </span>
-                      )}
-                      {template.quality_score && (
-                        <span
-                          className={`text-[10px] uppercase font-medium ${
-                            template.quality_score === 'GREEN'
-                              ? 'text-emerald-400'
-                              : template.quality_score === 'YELLOW'
-                                ? 'text-yellow-400'
-                                : 'text-red-400'
-                          }`}
-                          title="Meta quality score"
-                        >
-                          {template.quality_score}
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {template.body_text}
-                    </p>
-                    {template.footer_text && (
-                      <p className="text-xs text-muted-foreground italic">
-                        {template.footer_text}
-                      </p>
-                    )}
-                    {(template.rejection_reason || template.submission_error) && (
-                      <div className="flex items-start gap-1.5 text-xs text-red-400 bg-red-950/20 border border-red-900/40 rounded px-2 py-1.5">
-                        <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
-                        <span>
-                          {template.rejection_reason || template.submission_error}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0 ml-2">
-                    {statusKey === 'APPROVED' && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEdit(template)}
-                        title="Editing triggers Meta re-review — status flips to PENDING."
-                        aria-label="Edit template"
-                        className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-8 px-2"
-                      >
-                        <Pencil className="size-3.5" />
-                        Edit
-                      </Button>
-                    )}
-                    {(statusKey === 'REJECTED' || statusKey === 'PAUSED') && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => openEdit(template)}
-                        title="Edit the template and resubmit to Meta for review."
-                        aria-label="Edit and resubmit template"
-                        className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-8 px-2"
-                      >
-                        <RotateCcw className="size-3.5" />
-                        Resubmit
-                      </Button>
-                    )}
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => setTemplateToDelete(template)}
-                      disabled={deletingId === template.id}
-                      aria-label={
-                        template.meta_template_id
-                          ? 'Delete template from Meta and locally'
-                          : 'Delete template locally'
-                      }
-                      title={
-                        template.meta_template_id
-                          ? 'Delete from Meta and locally'
-                          : 'Delete locally'
-                      }
-                      className="text-muted-foreground hover:text-red-400 hover:bg-red-950/30 h-8 w-8"
-                    >
-                      {deletingId === template.id ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <Trash2 className="size-4" />
-                      )}
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            );
-          })}
+        <div className="space-y-4">
+          <Tabs value={statusFilter} onValueChange={(val) => setStatusFilter(val as any)} className="w-full">
+            <TabsList className="bg-muted/50 border border-border">
+              <TabsTrigger value="ALL" className="data-[active=true]:bg-background">All ({templates.length})</TabsTrigger>
+              <TabsTrigger value="APPROVED" className="data-[active=true]:bg-background text-emerald-500 data-[active=true]:text-emerald-500">Approved ({templates.filter(t => t.status === 'APPROVED').length})</TabsTrigger>
+              <TabsTrigger value="PENDING" className="data-[active=true]:bg-background text-amber-500 data-[active=true]:text-amber-500">Pending ({templates.filter(t => t.status === 'PENDING').length})</TabsTrigger>
+              <TabsTrigger value="REJECTED" className="data-[active=true]:bg-background text-red-500 data-[active=true]:text-red-500">Rejected ({templates.filter(t => t.status === 'REJECTED').length})</TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          {templates.filter(t => statusFilter === 'ALL' || (t.status || 'DRAFT') === statusFilter).length === 0 ? (
+            <div className="py-8 text-center text-sm text-muted-foreground border border-dashed border-border rounded-lg">
+              No templates found for this status.
+            </div>
+          ) : (
+            <div className="grid gap-3 xl:grid-cols-2">
+              {templates
+                .filter(t => statusFilter === 'ALL' || (t.status || 'DRAFT') === statusFilter)
+                .map((template) => {
+                  const statusKey = template.status || 'DRAFT';
+                  const status = templateStatusConfig[statusKey];
+                  return (
+                    <Card key={template.id}>
+                      <CardContent className="flex items-start justify-between pt-4">
+                        <div className="space-y-2 min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h3 className="font-medium text-foreground">{template.name}</h3>
+                            <Badge
+                              className={`text-xs border ${categoryColors[template.category] || ''}`}
+                            >
+                              {template.category}
+                            </Badge>
+                            <Badge className={`text-xs border ${status.classes}`}>
+                              {status.label}
+                            </Badge>
+                            {template.language && (
+                              <span className="text-xs text-muted-foreground uppercase">
+                                {template.language}
+                              </span>
+                            )}
+                            {template.quality_score && (
+                              <span
+                                className={`text-[10px] uppercase font-medium ${
+                                  template.quality_score === 'GREEN'
+                                    ? 'text-emerald-400'
+                                    : template.quality_score === 'YELLOW'
+                                      ? 'text-yellow-400'
+                                      : 'text-red-400'
+                                }`}
+                                title="Meta quality score"
+                              >
+                                {template.quality_score}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-sm text-muted-foreground line-clamp-2">
+                            {template.body_text}
+                          </p>
+                          {template.footer_text && (
+                            <p className="text-xs text-muted-foreground italic">
+                              {template.footer_text}
+                            </p>
+                          )}
+                          {(template.rejection_reason || template.submission_error) && (
+                            <div className="flex items-start gap-1.5 text-xs text-red-400 bg-red-950/20 border border-red-900/40 rounded px-2 py-1.5">
+                              <AlertCircle className="size-3.5 mt-0.5 shrink-0" />
+                              <span>
+                                {template.rejection_reason || template.submission_error}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0 ml-2">
+                          {statusKey === 'APPROVED' && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openEdit(template)}
+                              title="Editing triggers Meta re-review — status flips to PENDING."
+                              aria-label="Edit template"
+                              className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-8 px-2"
+                            >
+                              <Pencil className="size-3.5" />
+                              Edit
+                            </Button>
+                          )}
+                          {(statusKey === 'REJECTED' || statusKey === 'PAUSED') && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => openEdit(template)}
+                              title="Edit the template and resubmit to Meta for review."
+                              aria-label="Edit and resubmit template"
+                              className="text-muted-foreground hover:text-primary hover:bg-primary/10 h-8 px-2"
+                            >
+                              <RotateCcw className="size-3.5" />
+                              Resubmit
+                            </Button>
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => setTemplateToDelete(template)}
+                            disabled={deletingId === template.id}
+                            aria-label={
+                              template.meta_template_id
+                                ? 'Delete template from Meta and locally'
+                                : 'Delete template locally'
+                            }
+                            title={
+                              template.meta_template_id
+                                ? 'Delete from Meta and locally'
+                                : 'Delete locally'
+                            }
+                            className="text-muted-foreground hover:text-red-400 hover:bg-red-950/30 h-8 w-8"
+                          >
+                            {deletingId === template.id ? (
+                              <Loader2 className="size-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="size-4" />
+                            )}
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+            </div>
+          )}
         </div>
       )}
 
