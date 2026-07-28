@@ -105,27 +105,14 @@ export async function loadConversationsSeries(
   db: DB,
   rangeDays: number,
 ): Promise<ConversationsSeriesPoint[]> {
-  const start = daysAgoStart(rangeDays - 1).toISOString()
-  const { data, error } = await db
-    .from('messages')
-    .select('created_at, sender_type')
-    .gte('created_at', start)
-    .order('created_at', { ascending: true })
+  const tzOffset = new Date().getTimezoneOffset()
+  const { data, error } = await db.rpc('get_conversations_series', {
+    range_days: rangeDays,
+    tz_offset_minutes: tzOffset,
+  })
   if (error) throw error
 
-  const keys = lastNDayKeys(rangeDays)
-  const buckets = new Map<string, { incoming: number; outgoing: number }>()
-  for (const k of keys) buckets.set(k, { incoming: 0, outgoing: 0 })
-
-  for (const row of (data ?? []) as { created_at: string; sender_type: string }[]) {
-    const key = localDayKey(row.created_at)
-    const bucket = buckets.get(key)
-    if (!bucket) continue
-    if (row.sender_type === 'customer') bucket.incoming += 1
-    else bucket.outgoing += 1 // agent + bot both count as outgoing
-  }
-
-  return keys.map((day) => ({ day, ...(buckets.get(day) ?? { incoming: 0, outgoing: 0 }) }))
+  return (data ?? []) as ConversationsSeriesPoint[]
 }
 
 // --- 3. Pipeline donut -------------------------------------------------
@@ -170,72 +157,35 @@ export async function loadPipelineDonut(db: DB): Promise<PipelineDonutData> {
 // --- 4. Response time by day of week ----------------------------------
 
 export async function loadResponseTime(db: DB): Promise<ResponseTimeSummary> {
-  // Pull the last 14 days of messages in one shot, then walk per
-  // conversation to find each "first inbound" → "first subsequent
-  // outbound" pair. 14 days gives us both "this week" + "last week"
-  // with enough overlap if the user opens the dashboard late on a
-  // Monday.
-  const fourteenDaysAgo = daysAgoStart(13).toISOString()
-  const { data, error } = await db
-    .from('messages')
-    .select('conversation_id, sender_type, created_at')
-    .gte('created_at', fourteenDaysAgo)
-    .order('conversation_id', { ascending: true })
-    .order('created_at', { ascending: true })
+  const { data, error } = await db.rpc('get_response_time_samples', {
+    range_days: 14,
+  })
   if (error) throw error
 
-  const rows = (data ?? []) as {
-    conversation_id: string
-    sender_type: string
-    created_at: string
+  const samples = (data ?? []) as {
+    customer_at: string
+    response_at: string
+    diff_minutes: number
   }[]
-
-  // Group per conversation, pair unreplied customer messages with the
-  // next outbound message from the agent/bot. A single customer message
-  // can only count once (avoids inflating averages if the customer
-  // double-messages while the agent takes time to reply).
-  interface Sample {
-    customerAt: Date
-    responseAt: Date
-  }
-  const samples: Sample[] = []
-
-  let currentConv = ''
-  let pendingCustomer: Date | null = null
-  for (const row of rows) {
-    if (row.conversation_id !== currentConv) {
-      currentConv = row.conversation_id
-      pendingCustomer = null
-    }
-    const ts = new Date(row.created_at)
-    if (row.sender_type === 'customer') {
-      if (!pendingCustomer) pendingCustomer = ts
-    } else if (pendingCustomer) {
-      samples.push({ customerAt: pendingCustomer, responseAt: ts })
-      pendingCustomer = null
-    }
-  }
 
   const now = new Date()
   const thisWeekStart = daysAgoStart(mondayIndex(now))
   const lastWeekStart = daysAgoStart(mondayIndex(now) + 7)
 
-  // Per-day-of-week buckets, averaged over both weeks' worth of data
-  // so each bar has more samples to stand on. If a day has no samples
-  // its avgMinutes stays null and the chart renders the bar muted.
   const byDow = new Map<number, number[]>()
   for (let i = 0; i < 7; i++) byDow.set(i, [])
   const thisWeekMins: number[] = []
   const lastWeekMins: number[] = []
 
   for (const s of samples) {
-    const diffMin = (s.responseAt.getTime() - s.customerAt.getTime()) / 60_000
+    const customerAt = new Date(s.customer_at)
+    const diffMin = s.diff_minutes
     if (diffMin < 0) continue
-    const dow = mondayIndex(s.customerAt)
+    const dow = mondayIndex(customerAt)
     byDow.get(dow)!.push(diffMin)
-    if (s.customerAt >= thisWeekStart) {
+    if (customerAt >= thisWeekStart) {
       thisWeekMins.push(diffMin)
-    } else if (s.customerAt >= lastWeekStart && s.customerAt < thisWeekStart) {
+    } else if (customerAt >= lastWeekStart && customerAt < thisWeekStart) {
       lastWeekMins.push(diffMin)
     }
   }
@@ -251,10 +201,6 @@ export async function loadResponseTime(db: DB): Promise<ResponseTimeSummary> {
       samples: samples.length,
     }
   })
-
-  // Silence unused-label warnings — keep the arrays explicitly named
-  // for readability above.
-  void DOW_SHORT_MON_FIRST
 
   return {
     buckets,

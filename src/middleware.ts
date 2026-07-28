@@ -23,6 +23,29 @@ export async function middleware(request: NextRequest) {
     }
   )
 
+  const pathname = request.nextUrl.pathname;
+  
+  const isAuthPath = pathname === '/login' || pathname === '/signup' || pathname === '/forgot-password';
+  const isProtectedPath = pathname.startsWith('/dashboard') || 
+                          pathname.startsWith('/inbox') || 
+                          pathname.startsWith('/contacts') || 
+                          pathname.startsWith('/pipelines') || 
+                          pathname.startsWith('/broadcasts') || 
+                          pathname.startsWith('/automations') || 
+                          pathname.startsWith('/flows') || 
+                          pathname.startsWith('/knowledge-base') || 
+                          pathname.startsWith('/settings') ||
+                          pathname.startsWith('/join');
+                          
+  const isProtectedApi = pathname.startsWith('/api/') && 
+                          !pathname.startsWith('/api/whatsapp/webhook') && 
+                          !pathname.startsWith('/api/flows/cron') && 
+                          !pathname.startsWith('/api/automations/cron');
+
+  if (!isAuthPath && !isProtectedPath && !isProtectedApi) {
+    return supabaseResponse;
+  }
+
   const { data: { user } } = await supabase.auth.getUser()
 
   // getUser() transparently refreshes an expired access token, which

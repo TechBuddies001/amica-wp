@@ -16,11 +16,12 @@ import {
 const inter = Inter({
   variable: "--font-sans",
   subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "AMICA",
-  description: "AMICA Solution Pvt. Ltd.",
+  title: "AMICA Smart Learn",
+  description: "AMICA Smart Learn Solution Pvt. Ltd.",
   robots: {
     index: false,
     follow: false,
@@ -93,6 +94,8 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <head>
+        <link rel="preconnect" href="https://bsoafrgiazduuicvpxel.supabase.co" crossOrigin="anonymous" />
+        <link rel="dns-prefetch" href="https://bsoafrgiazduuicvpxel.supabase.co" />
         <Script
           id="theme-boot"
           strategy="beforeInteractive"

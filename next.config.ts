@@ -61,6 +61,20 @@ const SECURITY_HEADERS = [
 ] as const;
 
 const nextConfig: NextConfig = {
+  // ── Performance ───────────────────────────────────────────
+  compress: true,
+  poweredByHeader: false,
+  experimental: {
+    optimizePackageImports: [
+      'lucide-react',
+      'recharts',
+      'date-fns',
+      '@xyflow/react',
+    ],
+  },
+  images: {
+    formats: ['image/avif', 'image/webp'],
+  },
   /**
    * Cache-Control policy.
    *

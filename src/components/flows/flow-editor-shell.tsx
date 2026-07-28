@@ -18,14 +18,23 @@
 
 import { useEffect, useState } from "react";
 import { LayoutGrid, ListTree } from "lucide-react";
+import dynamic from "next/dynamic";
 
 import { FlowBuilder } from "./flow-builder";
-import { FlowCanvas } from "./flow-canvas";
 import { FlowEditorProvider } from "./flow-editor-state";
 import { EditorHeader } from "./header";
 import { ValidationPanel } from "./validation-panel";
 import { cn } from "@/lib/utils";
 import type { FlowRow, FlowNodeRow } from "@/lib/flows/types";
+
+const FlowCanvas = dynamic(() => import("./flow-canvas").then((mod) => mod.FlowCanvas), {
+  ssr: false,
+  loading: () => (
+    <div className="h-[500px] w-full flex items-center justify-center border border-dashed rounded-lg bg-card text-muted-foreground">
+      Loading Canvas Editor...
+    </div>
+  )
+});
 
 /**
  * Below this viewport width we force list view and hide the toggle.
