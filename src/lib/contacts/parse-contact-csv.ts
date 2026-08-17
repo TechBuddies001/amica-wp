@@ -49,15 +49,46 @@ export function parseContactCsv(text: string): ParseContactCsvResult {
     .split(',')
     .map((h) => h.trim().toLowerCase().replace(/["']/g, ''));
 
-  const phoneIdx = headers.indexOf('phone');
+  const phoneIdx = headers.findIndex((h) =>
+    [
+      'phone',
+      'mobile',
+      'contact',
+      'number',
+      'phone number',
+      'phonenumber',
+      'phone_number',
+      'whatsapp',
+      'whatsapp number',
+      'mobile number',
+      'mobile_number',
+    ].includes(h)
+  );
   if (phoneIdx === -1) {
     return { rows: [], hasTagsColumn: false, hasCompanyColumn: false };
   }
 
-  const nameIdx = headers.indexOf('name');
-  const emailIdx = headers.indexOf('email');
-  const companyIdx = headers.indexOf('company');
-  const tagsIdx = headers.indexOf('tags');
+  const nameIdx = headers.findIndex((h) =>
+    [
+      'name',
+      'full name',
+      'fullname',
+      'contact name',
+      'contact_name',
+      'first name',
+      'firstname',
+      'first_name',
+    ].includes(h)
+  );
+  const emailIdx = headers.findIndex((h) =>
+    ['email', 'e-mail', 'email address', 'email_address'].includes(h)
+  );
+  const companyIdx = headers.findIndex((h) =>
+    ['company', 'organization', 'company name', 'company_name'].includes(h)
+  );
+  const tagsIdx = headers.findIndex((h) =>
+    ['tags', 'tag', 'labels', 'label'].includes(h)
+  );
 
   const rows: ParsedContactRow[] = [];
 
