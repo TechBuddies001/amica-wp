@@ -49,6 +49,13 @@ interface WhatsAppMessage {
     button_reply?: { id: string; title: string }
     list_reply?: { id: string; title: string; description?: string }
   }
+  /** Set when the customer taps a template quick reply button. */
+  button?: { text?: string; payload?: string }
+  /** Set when the customer shares a contact card. */
+  contacts?: Array<{
+    name?: { formatted_name?: string; first_name?: string; last_name?: string }
+    phones?: Array<{ phone?: string; type?: string }>
+  }>
   /** Present when the customer swipe-replies to one of our messages. */
   context?: { id: string }
 }
@@ -857,6 +864,28 @@ async function parseMessageContent(
         }
       }
       return { ...empty, contentText: '[Interactive reply]' }
+    }
+
+    case 'button': {
+      // The customer tapped a template quick reply button. Meta delivers
+      // `button.text` (the visible label) and `button.payload` (the developer payload).
+      const buttonText = message.button?.text || message.button?.payload || '[Button tap]'
+      return {
+        ...empty,
+        contentText: buttonText,
+        interactiveReplyId: message.button?.payload || null,
+      }
+    }
+
+    case 'contacts': {
+      const contactName =
+        message.contacts?.[0]?.name?.formatted_name ||
+        message.contacts?.[0]?.phones?.[0]?.phone ||
+        'Contact'
+      return {
+        ...empty,
+        contentText: `📇 Contact: ${contactName}`,
+      }
     }
 
     default:
