@@ -943,14 +943,16 @@ async function findOrCreateConversation(
   contactId: string,
 ) {
   // Look for existing conversation in this account
-  const { data: existing, error: findError } = await supabaseAdmin()
+  const { data: existing } = await supabaseAdmin()
     .from('conversations')
     .select('*')
     .eq('account_id', accountId)
     .eq('contact_id', contactId)
-    .single()
+    .order('created_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
 
-  if (!findError && existing) {
+  if (existing) {
     return existing
   }
 

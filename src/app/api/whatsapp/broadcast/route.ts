@@ -152,18 +152,34 @@ export async function POST(request: Request) {
 
     const accessToken = decrypt(config.access_token)
 
-    // Load the template row once so sendTemplateMessage can build
-    // header + button components on each iteration. Loading inside
-    // the loop would N+1 against Supabase for every recipient.
-    // Guard against a malformed local row crashing every send in
-    // the loop with the same opaque TypeError — fail loudly once.
-    const { data: rawTemplateRow } = await supabase
+    // Load the template row by name & account to resolve its approved language
+    // (e.g., 'en' vs 'en_US'). This prevents Meta error (#132001) when
+    // a template is approved under 'en' but 'en_US' was sent.
+    let rawTemplateRow = null
+    const reqLang = template_language || 'en'
+
+    const { data: exactMatch } = await supabase
       .from('message_templates')
       .select('*')
       .eq('account_id', accountId)
       .eq('name', template_name)
-      .eq('language', template_language || 'en_US')
+      .eq('language', reqLang)
       .maybeSingle()
+
+    if (exactMatch) {
+      rawTemplateRow = exactMatch
+    } else {
+      const { data: nameMatch } = await supabase
+        .from('message_templates')
+        .select('*')
+        .eq('account_id', accountId)
+        .eq('name', template_name)
+        .maybeSingle()
+      if (nameMatch) {
+        rawTemplateRow = nameMatch
+      }
+    }
+
     if (rawTemplateRow && !isMessageTemplate(rawTemplateRow)) {
       return NextResponse.json(
         {
@@ -174,6 +190,7 @@ export async function POST(request: Request) {
       )
     }
     const templateRow = rawTemplateRow ?? null
+    const resolvedLanguage = templateRow?.language || reqLang
 
     const results: BroadcastResult[] = []
     let sentCount = 0
@@ -205,7 +222,7 @@ export async function POST(request: Request) {
             accessToken,
             to: variant,
             templateName: template_name,
-            language: template_language || 'en_US',
+            language: resolvedLanguage,
             template: templateRow ?? undefined,
             messageParams: recipient.messageParams,
             params: recipient.params ?? [],
@@ -232,6 +249,61 @@ export async function POST(request: Request) {
           whatsapp_message_id: sentMessageId,
         })
         sentCount++
+
+        // Save into messages table & conversation so it immediately shows in Inbox
+        try {
+          const { data: contactRow } = await supabase
+            .from('contacts')
+            .select('id, name')
+            .eq('account_id', accountId)
+            .eq('phone', recipient.phone)
+            .maybeSingle()
+
+          if (contactRow) {
+            let { data: conv } = await supabase
+              .from('conversations')
+              .select('id')
+              .eq('account_id', accountId)
+              .eq('contact_id', contactRow.id)
+              .order('created_at', { ascending: true })
+              .limit(1)
+              .maybeSingle()
+
+            if (!conv) {
+              const { data: createdConv } = await supabase
+                .from('conversations')
+                .insert({
+                  account_id: accountId,
+                  user_id: user.id,
+                  contact_id: contactRow.id,
+                  status: 'open',
+                  last_message_text: templateRow?.body_text || `[Template: ${template_name}]`,
+                  last_message_at: new Date().toISOString(),
+                })
+                .select()
+                .single()
+              conv = createdConv
+            }
+
+            if (conv) {
+              const nameVal = contactRow.name || 'Sir/Ma\'am'
+              const textVal = (templateRow?.body_text || `[Template: ${template_name}]`).replace(/\{\{1\}\}/g, nameVal)
+              await supabase.from('messages').insert({
+                conversation_id: conv.id,
+                sender_type: 'agent',
+                content_type: templateRow?.header_type === 'image' ? 'image' : 'template',
+                content_text: textVal,
+                media_url: templateRow?.header_media_url || null,
+                template_name: template_name,
+                message_id: sentMessageId,
+                status: 'sent',
+                created_at: new Date().toISOString(),
+              })
+            }
+          }
+        } catch (msgErr) {
+          console.error('[broadcast] failed to insert message record:', msgErr)
+        }
       } else {
         console.error(
           `Failed to send broadcast to ${recipient.phone}:`,
