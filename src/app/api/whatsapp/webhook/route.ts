@@ -609,6 +609,20 @@ async function processMessage(
     .eq('sender_type', 'customer')
   const isFirstInboundMessage = (priorCustomerMsgCount ?? 0) === 0
 
+  // Prevent duplicate message insertion if Meta webhook retries
+  if (message.id) {
+    const { data: existingMsg } = await supabaseAdmin()
+      .from('messages')
+      .select('id')
+      .eq('message_id', message.id)
+      .maybeSingle()
+
+    if (existingMsg) {
+      console.log(`[webhook] message ${message.id} already exists, skipping duplicate insert`)
+      return
+    }
+  }
+
   const { error: msgError } = await supabaseAdmin().from('messages').insert({
     conversation_id: conversation.id,
     sender_type: 'customer',

@@ -207,8 +207,18 @@ export default function InboxPage() {
           newMsg.conversation_id === activeConversation.id
         ) {
           setMessages((prev) => {
-            // Avoid duplicates
-            if (prev.some((m) => m.id === newMsg.id)) return prev;
+            // Avoid duplicates by primary id or WhatsApp message_id
+            if (
+              prev.some(
+                (m) =>
+                  m.id === newMsg.id ||
+                  (m.message_id &&
+                    newMsg.message_id &&
+                    m.message_id === newMsg.message_id),
+              )
+            ) {
+              return prev;
+            }
             // Replace optimistic message if it exists
             const withoutOptimistic = prev.filter(
               (m) => !m.id.startsWith("temp-")
