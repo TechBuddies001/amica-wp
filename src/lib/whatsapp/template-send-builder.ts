@@ -140,7 +140,10 @@ function buildBodyComponent(
   const values = body.slice(0, varCount);
   return {
     type: 'body',
-    parameters: values.map((text) => ({ type: 'text', text: String(text) })),
+    parameters: values.map((text) => {
+      const trimmed = (text == null ? '' : String(text)).trim();
+      return { type: 'text', text: trimmed || 'Sir/Ma\'am' };
+    }),
   };
 }
 

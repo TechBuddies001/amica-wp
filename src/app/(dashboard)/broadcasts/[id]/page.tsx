@@ -32,6 +32,7 @@ import {
   Download,
   ChevronDown,
   Trash2,
+  RotateCcw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import {
@@ -155,6 +156,105 @@ export default function BroadcastDetailPage() {
   );
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [resending, setResending] = useState(false);
+
+  async function handleResend() {
+    if (!broadcast) return;
+    setResending(true);
+    const toastId = toast.loading('Resending broadcast to all recipients...');
+    try {
+      const supabase = createClient();
+      await supabase
+        .from('broadcasts')
+        .update({ status: 'sending', failed_count: 0, sent_count: 0 })
+        .eq('id', broadcastId);
+
+      const { data: recs } = await supabase
+        .from('broadcast_recipients')
+        .select('*, contact:contacts(*)')
+        .eq('broadcast_id', broadcastId);
+
+      if (!recs || recs.length === 0) {
+        throw new Error('No recipients found');
+      }
+
+      const BATCH_SIZE = 10;
+      let totalSent = 0;
+      let totalFailed = 0;
+
+      for (let i = 0; i < recs.length; i += BATCH_SIZE) {
+        const batch = recs.slice(i, i + BATCH_SIZE);
+        const apiRecipients = batch
+          .filter((r) => r.contact?.phone)
+          .map((r) => {
+            const nameVal = r.contact?.name?.trim() || 'Sir/Ma\'am';
+            return {
+              phone: r.contact!.phone as string,
+              params: [nameVal],
+            };
+          });
+
+        if (apiRecipients.length === 0) continue;
+
+        try {
+          const res = await fetch('/api/whatsapp/broadcast', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              recipients: apiRecipients,
+              template_name: broadcast.template_name,
+              template_language: broadcast.template_language || 'en',
+            }),
+          });
+          const data = await res.json();
+          if (res.ok && data.results) {
+            for (const r of data.results) {
+              const matchedRec = batch.find((b) => b.contact?.phone === r.phone);
+              if (matchedRec) {
+                if (r.status === 'sent') {
+                  totalSent++;
+                  await supabase
+                    .from('broadcast_recipients')
+                    .update({ status: 'sent', sent_at: new Date().toISOString(), whatsapp_message_id: r.whatsapp_message_id, error_message: null })
+                    .eq('id', matchedRec.id);
+                } else {
+                  totalFailed++;
+                  await supabase
+                    .from('broadcast_recipients')
+                    .update({ status: 'failed', error_message: r.error || 'Failed' })
+                    .eq('id', matchedRec.id);
+                }
+              }
+            }
+          } else {
+            totalFailed += batch.length;
+            for (const b of batch) {
+              await supabase
+                .from('broadcast_recipients')
+                .update({ status: 'failed', error_message: data.error || 'Failed' })
+                .eq('id', b.id);
+            }
+          }
+        } catch (err: any) {
+          totalFailed += batch.length;
+        }
+
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+
+      await supabase
+        .from('broadcasts')
+        .update({ status: totalFailed === recs.length ? 'failed' : 'sent' })
+        .eq('id', broadcastId);
+
+      toast.success('Broadcast resubmitted successfully!', { id: toastId });
+      window.location.reload();
+    } catch (err: any) {
+      toast.error(err.message || 'Resend failed', { id: toastId });
+    } finally {
+      setResending(false);
+    }
+  }
 
   useEffect(() => {
     async function fetchData() {
@@ -303,48 +403,62 @@ export default function BroadcastDetailPage() {
           </div>
         </div>
 
-        {/* Delete — inline-confirm pattern matches the pipeline-settings
-            "Delete Pipeline" flow. Mid-send broadcasts can't be deleted
-            because orphaning in-flight Meta messages would leave the
-            funnel inconsistent. */}
-        {confirmDelete ? (
-          <div className="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm">
-            <span className="text-red-300">Delete this broadcast?</span>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="default"
+            size="sm"
+            disabled={resending || broadcast.status === 'sending'}
+            onClick={handleResend}
+            title="Resend this broadcast to all recipients"
+            className="bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 shadow-sm font-semibold h-9 px-4"
+          >
+            {resending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RotateCcw className="h-4 w-4" />
+            )}
+            {resending ? 'Resending…' : 'Resend Broadcast'}
+          </Button>
+
+          {confirmDelete ? (
+            <div className="flex items-center gap-2 rounded-md border border-red-500/30 bg-red-500/10 px-3 py-1.5 text-sm">
+              <span className="text-red-300">Delete this broadcast?</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setConfirmDelete(false)}
+                disabled={deleting}
+                className="h-7 border-border bg-transparent text-muted-foreground hover:bg-muted"
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="h-7 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? 'Deleting…' : 'Confirm'}
+              </Button>
+            </div>
+          ) : (
             <Button
               variant="outline"
               size="sm"
-              onClick={() => setConfirmDelete(false)}
-              disabled={deleting}
-              className="h-7 border-border bg-transparent text-muted-foreground hover:bg-muted"
+              disabled={broadcast.status === 'sending'}
+              onClick={() => setConfirmDelete(true)}
+              title={
+                broadcast.status === 'sending'
+                  ? 'Cannot delete while a broadcast is actively sending'
+                  : 'Delete this broadcast'
+              }
+              className="border-red-500/30 bg-transparent text-red-400 hover:bg-red-500/10 disabled:opacity-40"
             >
-              Cancel
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete
             </Button>
-            <Button
-              size="sm"
-              onClick={handleDelete}
-              disabled={deleting}
-              className="h-7 bg-red-600 text-white hover:bg-red-700 disabled:opacity-50"
-            >
-              {deleting ? 'Deleting…' : 'Confirm'}
-            </Button>
-          </div>
-        ) : (
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={broadcast.status === 'sending'}
-            onClick={() => setConfirmDelete(true)}
-            title={
-              broadcast.status === 'sending'
-                ? 'Cannot delete while a broadcast is actively sending'
-                : 'Delete this broadcast'
-            }
-            className="border-red-500/30 bg-transparent text-red-400 hover:bg-red-500/10 disabled:opacity-40"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-            Delete
-          </Button>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Stats — 6 cards: Total / Sent / Delivered / Read / Replied / Failed */}

@@ -97,16 +97,16 @@ export function resolveVariables(
 
     if (v.type === 'field') {
       const fieldMap: Record<string, string | undefined> = {
-        name: contact.name,
+        name: contact.name?.trim() || 'Sir/Ma\'am',
         phone: contact.phone,
         email: contact.email,
         company: contact.company,
       };
-      return fieldMap[v.value] ?? '';
+      return fieldMap[v.value] || 'Sir/Ma\'am';
     }
 
     // custom_field
-    return customValues?.get(v.value) ?? '';
+    return customValues?.get(v.value) || 'Sir/Ma\'am';
   });
 }
 
