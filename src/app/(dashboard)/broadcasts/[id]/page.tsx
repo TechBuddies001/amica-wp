@@ -161,21 +161,40 @@ export default function BroadcastDetailPage() {
   async function handleResend() {
     if (!broadcast) return;
     setResending(true);
-    const toastId = toast.loading('Resending broadcast to all recipients...');
+
+    const supabase = createClient();
+    
+    // Check if there are pending or failed recipients to resume
+    const { data: pendingOrFailedRecs } = await supabase
+      .from('broadcast_recipients')
+      .select('*, contact:contacts(*)')
+      .eq('broadcast_id', broadcastId)
+      .in('status', ['pending', 'failed']);
+
+    const isResume = (pendingOrFailedRecs?.length ?? 0) > 0;
+    const toastId = toast.loading(
+      isResume
+        ? `Sending ${pendingOrFailedRecs!.length} remaining/pending recipients...`
+        : 'Resending broadcast to all recipients...'
+    );
+
     try {
-      const supabase = createClient();
       await supabase
         .from('broadcasts')
-        .update({ status: 'sending', failed_count: 0, sent_count: 0 })
+        .update({ status: 'sending' })
         .eq('id', broadcastId);
 
-      const { data: recs } = await supabase
-        .from('broadcast_recipients')
-        .select('*, contact:contacts(*)')
-        .eq('broadcast_id', broadcastId);
+      const recs = isResume
+        ? pendingOrFailedRecs!
+        : (
+            await supabase
+              .from('broadcast_recipients')
+              .select('*, contact:contacts(*)')
+              .eq('broadcast_id', broadcastId)
+          ).data;
 
       if (!recs || recs.length === 0) {
-        throw new Error('No recipients found');
+        throw new Error('No recipients found to send');
       }
 
       const BATCH_SIZE = 10;
@@ -235,22 +254,39 @@ export default function BroadcastDetailPage() {
                 .eq('id', b.id);
             }
           }
-        } catch (err: any) {
+        } catch {
           totalFailed += batch.length;
         }
 
         await new Promise((r) => setTimeout(r, 1000));
       }
 
+      // Compute final counts
+      const { count: finalSent } = await supabase
+        .from('broadcast_recipients')
+        .select('*', { count: 'exact', head: true })
+        .eq('broadcast_id', broadcastId)
+        .in('status', ['sent', 'delivered', 'read', 'replied']);
+
+      const { count: finalFailed } = await supabase
+        .from('broadcast_recipients')
+        .select('*', { count: 'exact', head: true })
+        .eq('broadcast_id', broadcastId)
+        .eq('status', 'failed');
+
       await supabase
         .from('broadcasts')
-        .update({ status: totalFailed === recs.length ? 'failed' : 'sent' })
+        .update({
+          status: 'sent',
+          sent_count: finalSent || totalSent,
+          failed_count: finalFailed || totalFailed,
+        })
         .eq('id', broadcastId);
 
-      toast.success('Broadcast resubmitted successfully!', { id: toastId });
+      toast.success(isResume ? 'Remaining messages sent successfully!' : 'Broadcast resubmitted successfully!', { id: toastId });
       window.location.reload();
     } catch (err: any) {
-      toast.error(err.message || 'Resend failed', { id: toastId });
+      toast.error(err.message || 'Send failed', { id: toastId });
     } finally {
       setResending(false);
     }
@@ -371,6 +407,11 @@ export default function BroadcastDetailPage() {
     { label: 'Replied', value: broadcast.replied_count, color: 'bg-indigo-500' },
   ];
 
+  const pendingCount = useMemo(
+    () => recipients.filter((r) => r.status === 'pending').length,
+    [recipients],
+  );
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -407,9 +448,9 @@ export default function BroadcastDetailPage() {
           <Button
             variant="default"
             size="sm"
-            disabled={resending || broadcast.status === 'sending'}
+            disabled={resending}
             onClick={handleResend}
-            title="Resend this broadcast to all recipients"
+            title={pendingCount > 0 ? `Send ${pendingCount} remaining pending recipients` : 'Resend this broadcast to all recipients'}
             className="bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 shadow-sm font-semibold h-9 px-4"
           >
             {resending ? (
@@ -417,7 +458,11 @@ export default function BroadcastDetailPage() {
             ) : (
               <RotateCcw className="h-4 w-4" />
             )}
-            {resending ? 'Resending…' : 'Resend Broadcast'}
+            {resending
+              ? 'Sending…'
+              : pendingCount > 0
+                ? `Resume Sending (${pendingCount} Pending)`
+                : 'Resend Broadcast'}
           </Button>
 
           {confirmDelete ? (
