@@ -11,6 +11,7 @@ import {
   handleTemplateWebhookChange,
   isTemplateWebhookField,
 } from '@/lib/whatsapp/template-webhook'
+import { routeMaskedRelayMessage } from '@/lib/whatsapp/masked-relay'
 
 // Lazy-initialized to avoid build-time crash when env vars are missing
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -557,6 +558,24 @@ async function processMessage(
   // Parse message content based on type
   const { contentText, mediaUrl, mediaType, interactiveReplyId } =
     await parseMessageContent(message, accessToken)
+
+  // ── WhatsApp Masked Proxy Relay Engine ──────────────────────────────
+  try {
+    const relayResult = await routeMaskedRelayMessage({
+      accountId,
+      senderPhone: message.from,
+      contentText,
+      mediaUrl,
+      mediaType,
+    })
+    if (relayResult.handled) {
+      console.log(
+        `[webhook] message from ${message.from} handled by Masked Relay (${relayResult.direction})`
+      )
+    }
+  } catch (relayError) {
+    console.error('[webhook] Error in Masked Relay router:', relayError)
+  }
 
   // Resolve swipe-reply context if present. A missing parent is fine —
   // we just store NULL and the UI renders the message without a quote.
