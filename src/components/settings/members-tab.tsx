@@ -30,8 +30,10 @@ import {
   MailX,
   Plus,
   Trash2,
+  UserPlus,
   UsersRound,
 } from 'lucide-react';
+import { AddMemberDialog } from './add-member-dialog';
 
 import {
   Avatar,
@@ -133,6 +135,7 @@ export function MembersTab() {
   const [loading, setLoading] = useState(true);
 
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [addUserOpen, setAddUserOpen] = useState(false);
   const [removingMember, setRemovingMember] = useState<Member | null>(null);
   const [pendingMemberAction, setPendingMemberAction] = useState<string | null>(
     null,
@@ -285,10 +288,16 @@ export function MembersTab() {
         description="People with access to this account. Roles control what each teammate can do."
         action={
           <RequireRole min="admin">
-            <Button onClick={() => setInviteOpen(true)}>
-              <Plus className="size-4" />
-              Invite member
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button onClick={() => setAddUserOpen(true)}>
+                <UserPlus className="size-4" />
+                Add Member Account
+              </Button>
+              <Button variant="outline" onClick={() => setInviteOpen(true)}>
+                <Plus className="size-4" />
+                Invite Link
+              </Button>
+            </div>
           </RequireRole>
         }
       />
@@ -614,6 +623,12 @@ export function MembersTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <AddMemberDialog
+        open={addUserOpen}
+        onOpenChange={setAddUserOpen}
+        onCreated={loadEverything}
+      />
     </section>
   );
 }
