@@ -2,7 +2,8 @@
 // /api/account/members
 //
 // GET: Lists every member of the caller's account.
-// POST: Allows Admin/Owner to directly create a new team member.
+// POST: Allows Admin/Owner to directly create a team member or
+//       a brand-new top-level Workspace Account with an Owner.
 // ============================================================
 
 import { NextResponse } from "next/server";
@@ -66,23 +67,16 @@ export async function POST(req: Request) {
 
     if (!canManageMembers(ctx.role)) {
       return NextResponse.json(
-        { error: "Only admins and owners can add team members" },
+        { error: "Only admins and owners can create user accounts" },
         { status: 403 }
       );
     }
 
-    const { email, password, fullName, role } = await req.json();
+    const { email, password, fullName, role, createNewWorkspace, workspaceName } = await req.json();
 
     if (!email || !password || !fullName || !role) {
       return NextResponse.json(
         { error: "Email, password, fullName, and role are required" },
-        { status: 400 }
-      );
-    }
-
-    if (!isAccountRole(role)) {
-      return NextResponse.json(
-        { error: "Invalid role specified" },
         { status: 400 }
       );
     }
@@ -110,7 +104,57 @@ export async function POST(req: Request) {
 
     const userId = authUser.user.id;
 
-    // 2. Link profile to caller's account_id and role
+    // CASE A: Create a Brand New Top-Level Workspace Account with New Owner
+    if (createNewWorkspace || role === "owner_new_workspace") {
+      const accountName = workspaceName || fullName;
+      const { data: newAccount, error: accErr } = await supabaseAdmin
+        .from("accounts")
+        .insert({
+          name: accountName,
+          owner_user_id: userId,
+          default_currency: "INR",
+        })
+        .select()
+        .single();
+
+      if (accErr || !newAccount) {
+        return NextResponse.json(
+          { error: "Failed to create new workspace account: " + (accErr?.message || "") },
+          { status: 500 }
+        );
+      }
+
+      await supabaseAdmin.from("profiles").upsert({
+        user_id: userId,
+        full_name: fullName,
+        email: email,
+        account_id: newAccount.id,
+        account_role: "owner",
+        role: "user",
+      }, { onConflict: "user_id" });
+
+      return NextResponse.json({
+        success: true,
+        type: "new_workspace_owner",
+        account: newAccount,
+        member: {
+          user_id: userId,
+          full_name: fullName,
+          email: email,
+          role: "owner",
+          joined_at: new Date().toISOString(),
+        },
+      });
+    }
+
+    // CASE B: Add to Current Workspace Account (Owner, Admin, Agent, Viewer)
+    if (!isAccountRole(role)) {
+      return NextResponse.json(
+        { error: "Invalid role specified" },
+        { status: 400 }
+      );
+    }
+
     const { error: profileError } = await supabaseAdmin
       .from("profiles")
       .upsert({
@@ -132,6 +176,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
+      type: "current_workspace_member",
       member: {
         user_id: userId,
         full_name: fullName,
