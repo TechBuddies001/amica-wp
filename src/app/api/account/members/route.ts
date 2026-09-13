@@ -4,6 +4,7 @@
 // GET: Lists every member of the caller's account.
 // POST: Allows Admin/Owner to directly create a team member or
 //       a brand-new top-level Workspace Account with an Owner.
+//       Supports existing users by re-assigning/updating them.
 // ============================================================
 
 import { NextResponse } from "next/server";
@@ -81,54 +82,106 @@ export async function POST(req: Request) {
       );
     }
 
+    const cleanEmail = email.trim().toLowerCase();
+
     const supabaseAdmin = createAdminClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
-    // 1. Create auth user with pre-confirmed email
+    let userId: string | null = null;
+
+    // 1. Try creating auth user with pre-confirmed email
     const { data: authUser, error: authError } =
       await supabaseAdmin.auth.admin.createUser({
-        email,
+        email: cleanEmail,
         password,
         email_confirm: true,
         user_metadata: { full_name: fullName },
       });
 
-    if (authError || !authUser.user) {
+    if (authUser?.user) {
+      userId = authUser.user.id;
+    } else if (authError?.message?.includes("already been registered")) {
+      // Find existing user by email & update password
+      const { data: listData } = await supabaseAdmin.auth.admin.listUsers();
+      const existing = listData?.users?.find(
+        (u) => u.email?.toLowerCase() === cleanEmail
+      );
+      if (existing) {
+        userId = existing.id;
+        await supabaseAdmin.auth.admin.updateUserById(userId, {
+          password,
+          user_metadata: { full_name: fullName },
+        });
+      } else {
+        return NextResponse.json(
+          { error: "User exists in auth but could not be retrieved" },
+          { status: 400 }
+        );
+      }
+    } else {
       return NextResponse.json(
         { error: authError?.message || "Failed to create user account" },
         { status: 400 }
       );
     }
 
-    const userId = authUser.user.id;
+    if (!userId) {
+      return NextResponse.json(
+        { error: "User ID resolution failed" },
+        { status: 500 }
+      );
+    }
 
     // CASE A: Create a Brand New Top-Level Workspace Account with New Owner
     if (createNewWorkspace || role === "owner_new_workspace") {
       const accountName = workspaceName || fullName;
-      const { data: newAccount, error: accErr } = await supabaseAdmin
+      
+      // Check if user already owns an account
+      let { data: existingOwnedAccount } = await supabaseAdmin
         .from("accounts")
-        .insert({
-          name: accountName,
-          owner_user_id: userId,
-          default_currency: "INR",
-        })
-        .select()
-        .single();
+        .select("*")
+        .eq("owner_user_id", userId)
+        .maybeSingle();
 
-      if (accErr || !newAccount) {
-        return NextResponse.json(
-          { error: "Failed to create new workspace account: " + (accErr?.message || "") },
-          { status: 500 }
-        );
+      let targetAccount = existingOwnedAccount;
+
+      if (!targetAccount) {
+        const { data: newAccount, error: accErr } = await supabaseAdmin
+          .from("accounts")
+          .insert({
+            name: accountName,
+            owner_user_id: userId,
+            default_currency: "INR",
+          })
+          .select()
+          .single();
+
+        if (accErr || !newAccount) {
+          return NextResponse.json(
+            { error: "Failed to create new workspace account: " + (accErr?.message || "") },
+            { status: 500 }
+          );
+        }
+        targetAccount = newAccount;
+      } else {
+        // Update workspace name if requested
+        const { data: updatedAcc } = await supabaseAdmin
+          .from("accounts")
+          .update({ name: accountName })
+          .eq("id", targetAccount.id)
+          .select()
+          .single();
+
+        if (updatedAcc) targetAccount = updatedAcc;
       }
 
       await supabaseAdmin.from("profiles").upsert({
         user_id: userId,
         full_name: fullName,
-        email: email,
-        account_id: newAccount.id,
+        email: cleanEmail,
+        account_id: targetAccount.id,
         account_role: "owner",
         role: "user",
       }, { onConflict: "user_id" });
@@ -136,11 +189,11 @@ export async function POST(req: Request) {
       return NextResponse.json({
         success: true,
         type: "new_workspace_owner",
-        account: newAccount,
+        account: targetAccount,
         member: {
           user_id: userId,
           full_name: fullName,
-          email: email,
+          email: cleanEmail,
           role: "owner",
           joined_at: new Date().toISOString(),
         },
@@ -160,7 +213,7 @@ export async function POST(req: Request) {
       .upsert({
         user_id: userId,
         full_name: fullName,
-        email: email,
+        email: cleanEmail,
         account_id: ctx.accountId,
         account_role: role,
         role: "user",
@@ -180,7 +233,7 @@ export async function POST(req: Request) {
       member: {
         user_id: userId,
         full_name: fullName,
-        email: email,
+        email: cleanEmail,
         role: role,
         joined_at: new Date().toISOString(),
       },
