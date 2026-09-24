@@ -399,14 +399,7 @@ export default function ContactsPage() {
           </div>
 
           <Popover>
-            <PopoverTrigger
-              render={
-                <Button
-                  variant="outline"
-                  className="border-border text-muted-foreground hover:bg-muted shrink-0"
-                />
-              }
-            >
+            <PopoverTrigger className="inline-flex items-center gap-1.5 h-8 rounded-md border border-border px-3 text-xs font-medium text-muted-foreground hover:bg-muted shrink-0 focus:outline-none">
               <Filter className="size-4" />
               Filter by tags
               {selectedTagIds.length > 0 && (
@@ -644,14 +637,8 @@ export default function ContactsPage() {
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger
-                        render={
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            className="text-muted-foreground hover:text-foreground"
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        }
+                        className="inline-flex items-center justify-center size-8 p-0 text-muted-foreground hover:text-foreground rounded-md hover:bg-muted focus:outline-none"
+                        onClick={(e) => e.stopPropagation()}
                       >
                         <MoreHorizontal className="size-4" />
                       </DropdownMenuTrigger>

@@ -563,15 +563,7 @@ export default function BroadcastDetailPage() {
           </h2>
           <div className="flex items-center gap-2">
             <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="border-border text-muted-foreground hover:bg-muted"
-                  />
-                }
-              >
+              <DropdownMenuTrigger className="inline-flex items-center gap-1.5 h-8 rounded-md border border-border px-3 text-xs font-medium text-muted-foreground hover:bg-muted focus:outline-none">
                 <Filter className="h-3.5 w-3.5" />
                 {statusFilter === 'all'
                   ? 'All statuses'
