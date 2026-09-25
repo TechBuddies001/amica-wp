@@ -5,7 +5,12 @@
  */
 export function sanitizePhoneForMeta(phone: string): string {
   if (!phone) return ''
-  return phone.replace(/\D/g, '')
+  let digits = phone.replace(/\D/g, '')
+  // If 10 digits starting with 6-9 (Indian mobile format without country code), auto-prepend 91
+  if (digits.length === 10 && /^[6-9]/.test(digits)) {
+    digits = '91' + digits
+  }
+  return digits
 }
 
 /**
